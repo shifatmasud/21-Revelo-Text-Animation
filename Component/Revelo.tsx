@@ -1,5 +1,5 @@
 import * as React from "react"
-import { useEffect, useRef, useState } from "react"
+import { useEffect, useRef, useState, useId } from "react"
 import { gsap } from "gsap"
 import { SplitText } from "gsap/SplitText"
 import { ScrollTrigger } from "gsap/ScrollTrigger"
@@ -22,6 +22,7 @@ type AnimationProperties = {
     color?: AnimationProperty<string>
     textStrokeColor?: AnimationProperty<string>
     textStrokeWidth?: AnimationProperty<number>
+    textShadow?: AnimationProperty<string>
     opacity?: AnimationProperty<number>
     x?: AnimationProperty<number | (() => number)>
     y?: AnimationProperty<number | (() => number)>
@@ -40,12 +41,6 @@ type AnimationProperties = {
     delay?: number
     origin?: "start" | "center" | "edges" | "random" | "end"
     ease?: string
-}
-
-type Gradient = {
-    from: string
-    to: string
-    angle?: number
 }
 
 interface Props {
@@ -77,8 +72,12 @@ interface Props {
         textDecoration?: string
     }
     color?: string
-    useGradient?: boolean
-    gradient?: Gradient
+    glitchColor?: string
+    lettersOnlyReel?: boolean
+    debugMarkers?: boolean
+    staticShockDuration?: number
+    staticShockSpeed?: number
+    staticShockDisplacement?: number
 }
 
 type AnimationPresetProperties = {
@@ -279,11 +278,19 @@ const animationPresets: { [key: string]: AnimationPresetProperties } = {
     },
     staticShock: {
         chars: {
+            color: { from: "#333333", to: "#EEEEEE" },
             opacity: { from: 0, to: 1 },
-            y: { from: 20, to: 0 },
-            duration: 2,
-            stagger: 0.02,
-            ease: "rough({ template: none.out, strength: 15, points: 30, taper: 'both', randomize: true, clamp: false })",
+            x: { from: () => gsap.utils.random(-50, 50), to: 0 },
+            y: { from: () => gsap.utils.random(-50, 50), to: 0 },
+            rotate: { from: () => gsap.utils.random(-25, 25), to: 0 },
+            scale: { from: () => gsap.utils.random(0.5, 1.5), to: 1 },
+            textShadow: {
+                from: "2px 2px 0px #00e6e6, -2px -2px 0px #ff00ff",
+                to: "0px 0px 0px transparent, 0px 0px 0px transparent",
+            },
+            duration: 0.4,
+            stagger: { each: 0.01, from: "random" },
+            ease: "rough({ template: none.out, strength: 300, points: 200, taper: 'none', randomize: true, clamp: false })",
         }
     },
     liquidMetal: {
@@ -360,7 +367,7 @@ const animationPresets: { [key: string]: AnimationPresetProperties } = {
 // ------------------------------------------------------------ //
 
 const animatedProperties = {
-    mask: {}, color: { render: (v: any) => v }, textStrokeColor: { render: (v: any) => v }, textStrokeWidth: { render: (v: any) => v },
+    mask: {}, color: { render: (v: any) => v }, textStrokeColor: { render: (v: any) => v }, textStrokeWidth: { render: (v: any) => v }, textShadow: { render: (v: any) => v },
     opacity: { render: (v: any) => v }, x: { render: (v: any) => `${v}%` }, y: { render: (v: any) => `${v}%` },
     scale: { render: (v: any) => v }, scaleX: { render: (v: any) => v }, scaleY: { render: (v: any) => v },
     filter: { render: (v: any) => `blur(${v}px)` }, rotate: { render: (v: any) => `${v}deg` }, rotateX: { render: (v: any) => `${v}deg` },
@@ -405,34 +412,34 @@ function getValues(object: any, type: "from" | "to" = "from") {
 // ------------------------------------------------------------ //
 export default function Revelo(props: Props) {
     const { 
-        text, as = "div", className, preset, animationType = "trigger",
-        animateIn, animateOut, replay = true, section, viewport = "center",
+        text,
+        as = "div",
+        className,
+        preset,
+        animationType = "trigger",
+        animateIn,
+        animateOut,
+        replay = true,
+        section,
+        viewport = "center",
         font = {},
         color = "#EEEEEE",
-        useGradient, gradient: gradientProp,
+        glitchColor = "#333333",
+        lettersOnlyReel = false,
+        debugMarkers = false,
+        staticShockDuration = 1,
+        staticShockSpeed = 5,
+        staticShockDisplacement = 15,
     } = props;
 
     const elementRef = useRef<HTMLDivElement>(null);
     const splitRef = useRef<HTMLDivElement>(null);
     const [pluginsLoaded, setPluginsLoaded] = useState(false);
-
-    // Combine preset and override props
-    const presetProps: AnimationPresetProperties = preset ? animationPresets[preset] : {};
-    const finalProps = {
-        lines: { ...presetProps.lines, ...props.lines },
-        words: { ...presetProps.words, ...props.words },
-        chars: { ...presetProps.chars, ...props.chars },
-        linesOut: { ...presetProps.linesOut, ...props.linesOut },
-        wordsOut: { ...presetProps.wordsOut, ...props.wordsOut },
-        charsOut: { ...presetProps.charsOut, ...props.charsOut },
-    };
+    const filterId = `revelo-filter-${useId().replace(/:/g, "")}`;
     
-    // Check if the chosen preset/override has a color animation
-    const isColorAnimated = finalProps.lines?.color || finalProps.words?.color || finalProps.chars?.color;
-
     useEffect(() => {
         // @ts-ignore
-        if (window.gsap && window.gsap.plugins.CustomEase) {
+        if (window.gsap && window.gsap.plugins.CustomEase && window.gsap.plugins.RoughEase) {
             setPluginsLoaded(true);
             return;
         }
@@ -453,6 +460,7 @@ export default function Revelo(props: Props) {
         };
         
         const customEaseURL = "https://cdn.jsdelivr.net/npm/gsap@3.13.1/dist/CustomEase.min.js";
+        const roughEaseURL = "https://cdn.jsdelivr.net/npm/gsap@3.13.1/dist/RoughEase.min.js";
         const easePackURL = "https://cdn.jsdelivr.net/npm/gsap@3.13.1/dist/EasePack.min.js";
 
         // @ts-ignore
@@ -461,12 +469,12 @@ export default function Revelo(props: Props) {
             window.gsap = gsap;
         }
 
-        Promise.all([loadScript(customEaseURL), loadScript(easePackURL)])
+        Promise.all([loadScript(customEaseURL), loadScript(roughEaseURL), loadScript(easePackURL)])
             .then(() => {
                 // @ts-ignore
                 if (window.CustomEase) {
                     // @ts-ignore
-                    gsap.registerPlugin(window.CustomEase);
+                    gsap.registerPlugin(window.CustomEase, window.RoughEase);
                     try {
                         // @ts-ignore
                         if (!gsap.config().eases.liquid) {
@@ -495,6 +503,28 @@ export default function Revelo(props: Props) {
     useEffect(() => {
         if (!pluginsLoaded) return;
 
+        const presetProps: AnimationPresetProperties = preset ? JSON.parse(JSON.stringify(animationPresets[preset])) : {};
+        
+        if (preset === 'staticShock' && presetProps.chars?.color) {
+            presetProps.chars.color.from = glitchColor;
+        }
+
+        const animationProps = {
+            lines: { ...presetProps.lines, ...props.lines },
+            words: { ...presetProps.words, ...props.words },
+            chars: { ...presetProps.chars, ...props.chars },
+            linesOut: { ...presetProps.linesOut, ...props.linesOut },
+            wordsOut: { ...presetProps.wordsOut, ...props.wordsOut },
+            charsOut: { ...presetProps.charsOut, ...props.charsOut },
+        };
+
+        for (const key of ['lines', 'words', 'chars', 'linesOut', 'wordsOut', 'charsOut']) {
+            const propSet = animationProps[key as keyof typeof animationProps];
+            if (propSet && propSet.color) {
+                propSet.color = { ...propSet.color, to: color };
+            }
+        }
+
         const animation = {
             inTimeline: null as gsap.core.Timeline | null,
             outTimeline: null as gsap.core.Timeline | null,
@@ -502,7 +532,8 @@ export default function Revelo(props: Props) {
             splitText: null as SplitText | null,
         }
         
-        const hasInAnimation = Object.keys(finalProps.lines).length > 0 || Object.keys(finalProps.words).length > 0 || Object.keys(finalProps.chars).length > 0;
+        const hasInAnimation = Object.keys(animationProps.lines).length > 0 || Object.keys(animationProps.words).length > 0 || Object.keys(animationProps.chars).length > 0;
+        const hasOutAnimation = Object.keys(animationProps.linesOut).length > 0 || Object.keys(animationProps.wordsOut).length > 0 || Object.keys(animationProps.charsOut).length > 0;
 
         const setupGsap = () => {
             if (!splitRef.current || !hasInAnimation) {
@@ -514,8 +545,8 @@ export default function Revelo(props: Props) {
             animation.outTimeline = gsap.timeline({ paused: true })
             
             animation.splitText = new SplitText(splitRef.current, {
-                type: `${Object.keys(finalProps.lines).length > 0 ? "lines," : ""}${Object.keys(finalProps.words).length > 0 ? "words," : ""}${Object.keys(finalProps.chars).length > 0 ? "chars" : ""}`,
-                mask: finalProps.lines?.mask ? "lines" : finalProps.words?.mask ? "words" : finalProps.chars?.mask ? "chars" : undefined,
+                type: `${Object.keys(animationProps.lines).length > 0 ? "lines," : ""}${Object.keys(animationProps.words).length > 0 ? "words," : ""}${Object.keys(animationProps.chars).length > 0 ? "chars" : ""}`,
+                mask: animationProps.lines?.mask ? "lines" : animationProps.words?.mask ? "words" : animationProps.chars?.mask ? "chars" : undefined,
                 linesClass: "line",
                 wordsClass: "word",
                 charsClass: "char",
@@ -524,160 +555,279 @@ export default function Revelo(props: Props) {
             if (elementRef.current) elementRef.current.style.opacity = "1"
 
             const targets = {
-                lines: Object.keys(finalProps.lines).length > 0 && animation.splitText.lines,
-                words: Object.keys(finalProps.words).length > 0 && animation.splitText.words,
-                chars: Object.keys(finalProps.chars).length > 0 && animation.splitText.chars,
+                lines: Object.keys(animationProps.lines).length > 0 && animation.splitText.lines,
+                words: Object.keys(animationProps.words).length > 0 && animation.splitText.words,
+                chars: Object.keys(animationProps.chars).length > 0 && animation.splitText.chars,
             }
-
-            const hasOutAnimation = Object.keys(finalProps.linesOut).length > 0 || Object.keys(finalProps.wordsOut).length > 0 || Object.keys(finalProps.charsOut).length > 0;
 
             // --- IN ANIMATIONS ---
             ;(['lines', 'words', 'chars'] as const).forEach(key => {
                 const target = targets[key];
-                const animProps = finalProps[key];
-                if (target && target.length > 0 && animProps) {
+                const animProps = animationProps[key];
+                if (!target || target.length === 0 || !animProps) return;
+
+                if (preset === 'staticShock' && key === 'chars') {
+                    const duration = animProps.duration ?? 0.4;
+                    const ease = animProps.ease ?? "none";
+                    const fromValues = getValues(animProps, "from");
+                    const toValues = getValues(animProps, "to");
+                    const feDisplacementMap = document.querySelector(`#${filterId} feDisplacementMap`);
+                    const feTurbulence = document.querySelector(`#${filterId} feTurbulence`);
                     
-                    if (key === 'chars' && animProps.reel) {
-                        const reelChars = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789!@#$%^&*()_+-=[]{};':\"\\|,.<>/?~".split('');
-                        const charElements = target as HTMLElement[];
-                        if (charElements.length === 0) return;
+                    animation.inTimeline.fromTo(target, 
+                        { ...fromValues }, 
+                        { ...toValues, duration, ease, stagger: animProps.stagger }
+                    );
+                    if(feDisplacementMap) {
+                        animation.inTimeline.fromTo(feDisplacementMap,
+                            { attr: { scale: staticShockDisplacement } },
+                            { attr: { scale: 0 }, duration, ease },
+                            "<"
+                        );
+                    }
+                    
+                    const flickerDuration = 1 / staticShockSpeed;
+                    const repeatCount = Math.floor(staticShockDuration * staticShockSpeed);
 
-                        let charHeight = charElements[0].getBoundingClientRect().height;
-                        if (charHeight === 0) return;
-
-                        const duration = animProps.duration ?? 1, ease = animProps.ease ?? "expo.out", delay = animProps.delay ?? 0, stagger = animProps.stagger ?? 0;
-                        let staggerOptions: gsap.StaggerVars = typeof stagger === 'number' ? { amount: stagger, from: animProps.origin ?? "start" } : stagger;
-
-                        const reelContainers: HTMLElement[] = [], reelData: { length: number }[] = [];
-                        charElements.forEach(charEl => {
-                            const originalChar = charEl.textContent;
-                            if (!originalChar || originalChar.trim() === '') return;
-                            const reelLength = gsap.utils.random(20, 30, 1);
-                            charEl.style.overflow = 'hidden'; charEl.style.height = `${charHeight}px`; charEl.style.display = 'inline-flex'; charEl.style.alignItems = 'flex-start';
-                            const reelContainer = document.createElement('div'); reelContainer.style.willChange = 'transform, filter';
-                            const finalCharDiv = document.createElement('div'); finalCharDiv.style.height = `${charHeight}px`; finalCharDiv.textContent = originalChar; reelContainer.appendChild(finalCharDiv);
-                            for (let i = 0; i < reelLength; i++) {
-                                const reelCharDiv = document.createElement('div'); reelCharDiv.style.height = `${charHeight}px`; reelCharDiv.textContent = reelChars[Math.floor(Math.random() * reelChars.length)]; reelContainer.appendChild(reelCharDiv);
-                            }
-                            charEl.innerHTML = ''; charEl.appendChild(reelContainer);
-                            reelContainers.push(reelContainer); reelData.push({ length: reelLength });
+                    if (repeatCount > 0) {
+                        const loopTl = gsap.timeline({ repeat: repeatCount, delay: -0.1 });
+                        loopTl.to(target, {
+                            duration: flickerDuration,
+                            x: () => gsap.utils.random(-8, 8),
+                            y: () => gsap.utils.random(-8, 8),
+                            rotate: () => gsap.utils.random(-10, 10),
+                            skewX: () => gsap.utils.random(-15, 15),
+                            scale: () => gsap.utils.random(0.95, 1.05),
+                            opacity: () => gsap.utils.random(0.4, 1),
+                            color: () => (Math.random() > 0.5 ? glitchColor : color),
+                            textShadow: () => Math.random() > 0.5 ? "1px 1px 0px #00e6e6, -1px -1px 0px #ff00ff" : "0px 0px 0px transparent",
+                            ease: "rough({ strength: 20, points: 10, randomize: true })",
+                            stagger: { each: 0.02, from: "random" },
                         });
-                        gsap.set(reelContainers, { y: (i) => -reelData[i].length * charHeight });
-                        animation.inTimeline?.to(reelContainers, { y: 0, duration, ease, delay, stagger: staggerOptions }, 0);
-                        return; 
+                         if (feDisplacementMap && feTurbulence) {
+                            loopTl.to(feDisplacementMap, {
+                                duration: flickerDuration,
+                                attr: { scale: () => gsap.utils.random(0, staticShockDisplacement * 0.75) },
+                                ease: "steps(1)"
+                            }, "<");
+                            loopTl.to(feTurbulence, {
+                                duration: flickerDuration,
+                                attr: { baseFrequency: () => `0.0${gsap.utils.random(1, 9)} 0.0${gsap.utils.random(1, 9)}` },
+                                ease: "steps(1)"
+                            }, "<");
+                        }
+                        animation.inTimeline.add(loopTl);
                     }
 
-                    const duration = animProps.duration ?? 1, ease = animProps.ease ?? "expo.out", delay = animProps.delay ?? 0, stagger = animProps.stagger ?? 0;
-                    let staggerOptions: gsap.StaggerVars = typeof stagger === 'number' ? { amount: stagger, from: animProps.origin ?? "start" } : stagger;
-                    const fromVars: any = { ...getValues(animProps, "from"), force3D: true };
-                    const toVars: any = { ...getValues(animProps, "to"), duration, ease, delay, stagger: staggerOptions };
-                    if (animProps.transformOrigin) { fromVars.transformOrigin = animProps.transformOrigin; toVars.transformOrigin = animProps.transformOrigin; }
-                    animation.inTimeline?.fromTo(target, fromVars, toVars, 0)
+                    const settleTl = gsap.timeline();
+                    settleTl.to(target, {
+                        duration: 0.5, x: 0, y: 0, rotate: 0, skewX: 0, scale: 1, opacity: 1, color: color,
+                        textShadow: "0px 0px 0px transparent", ease: "power3.out", stagger: { each: 0.02, from: "random" }
+                    });
+                    if (feDisplacementMap) {
+                        settleTl.to(feDisplacementMap, {
+                            duration: 0.5, attr: { scale: 0 }, ease: "power3.out",
+                        }, "<");
+                    }
+                    animation.inTimeline.add(settleTl);
+
+                } else if (key === 'chars' && animProps.reel) {
+                    const charElements = target as HTMLElement[];
+                    const charHeight = charElements[0]?.offsetHeight;
+                    if (!charHeight) return;
+                    
+                    const letters = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz";
+                    const allChars = letters + "0123456789!@#$%^&*()_+-=[]{}|;:<>?,./";
+                    const reelChars = lettersOnlyReel ? letters : allChars;
+
+                    charElements.forEach((charEl, i) => {
+                        const originalChar = charEl.textContent;
+                        if (!originalChar || originalChar.trim() === "") return;
+
+                        const reelContainer = document.createElement("div");
+                        const totalReelChars = 30;
+                        
+                        let reelContent = "";
+                        for (let j = 0; j < totalReelChars - 1; j++) {
+                           const randomChar = reelChars.charAt(Math.floor(Math.random() * reelChars.length));
+                           reelContent += `<div style="height: ${charHeight}px;">${randomChar}</div>`;
+                        }
+                        reelContent += `<div style="height: ${charHeight}px;">${originalChar}</div>`;
+                        reelContainer.innerHTML = reelContent;
+                        
+                        charEl.innerHTML = "";
+                        charEl.appendChild(reelContainer);
+                        charEl.style.height = `${charHeight}px`;
+                        charEl.style.overflow = 'hidden';
+                        charEl.style.display = 'inline-block';
+
+                        animation.inTimeline?.fromTo(
+                            reelContainer,
+                            { y: 0, ...getValues(animProps, "from") },
+                            {
+                                y: -charHeight * (totalReelChars - 1),
+                                ...getValues(animProps, "to"),
+                                duration: animProps.duration,
+                                ease: animProps.ease,
+                                delay: (animProps.stagger as any)?.each ? i * (animProps.stagger as any).each : 0,
+                            },
+                            0
+                        );
+                    });
+
+                } else {
+                    const stagger = animProps.stagger ?? 0;
+                    let staggerOptions: gsap.StaggerVars = typeof stagger === "number"
+                            ? { amount: stagger, from: animProps.origin ?? "start" }
+                            : stagger;
+                            
+                    animation.inTimeline?.fromTo(target,
+                        getValues(animProps, "from"),
+                        {
+                            ...getValues(animProps, "to"),
+                            duration: animProps.duration,
+                            stagger: staggerOptions,
+                            ease: animProps.ease,
+                            transformOrigin: animProps.transformOrigin,
+                        },
+                        animProps.delay ?? 0
+                    );
                 }
-            })
+            });
 
             // --- OUT ANIMATIONS ---
-            if (hasOutAnimation) {
-                 ;(['lines', 'words', 'chars'] as const).forEach(key => {
+            if(hasOutAnimation) {
+                (['lines', 'words', 'chars'] as const).forEach(key => {
                     const target = targets[key];
-                    const animProps = finalProps[`${key}Out`];
-                    if (target && target.length > 0 && animProps) {
-                        const duration = animProps.duration ?? 1, ease = animProps.ease ?? "expo.out", delay = animProps.delay ?? 0, stagger = animProps.stagger ?? 0;
-                        let staggerOptions: gsap.StaggerVars = typeof stagger === 'number' ? { amount: stagger, from: animProps.origin ?? "start" } : stagger;
-                        const toVars: any = { ...getValues(animProps, "to"), duration, ease, delay, stagger: staggerOptions };
-                        if (animProps.transformOrigin) toVars.transformOrigin = animProps.transformOrigin;
-                        animation.outTimeline?.to(target, toVars, 0)
-                    }
+                    const animProps = animationProps[`${key}Out`];
+                     if (target && target.length > 0 && animProps && Object.keys(animProps).length > 0) {
+                         const stagger = animProps.stagger ?? 0;
+                         let staggerOptions: gsap.StaggerVars = typeof stagger === "number"
+                                 ? { amount: stagger, from: animProps.origin ?? "start" }
+                                 : stagger;
+                         animation.outTimeline?.to(target, 
+                            {
+                                ...getValues(animProps, "to"),
+                                duration: animProps.duration,
+                                stagger: staggerOptions,
+                                ease: animProps.ease,
+                                transformOrigin: animProps.transformOrigin,
+                            },
+                            animProps.delay ?? 0
+                        );
+                     }
                 })
             }
-
+            
             if (animationType !== "manual") {
-                let start, end;
+                const triggerElement = section?.current || elementRef.current;
                 const vp = viewport ?? "center";
-                if (animationType === "scrub") {
-                    start = vp === "top" ? "top center" : vp === "bottom" ? "top bottom" : "top 80%";
-                    end = vp === "top" ? "bottom top" : vp === "bottom" ? "bottom center" : "bottom 20%";
-                } else {
-                    start = `top ${vp}`; end = `bottom ${vp}`;
-                }
+                const start = animationType === 'scrub' ? "top bottom" : `top ${vp === 'center' ? 'center' : vp === 'top' ? 'bottom' : 'top'}`;
+                const end = animationType === 'scrub' ? "bottom top" : `bottom ${vp === 'center' ? 'center' : vp === 'top' ? 'bottom' : 'top'}`;
 
                 animation.scrollTrigger = ScrollTrigger.create({
-                    trigger: section?.current || elementRef.current,
-                    start, end, once: !replay && animationType === "trigger",
-                    onEnter: () => animationType === "trigger" && animation.inTimeline?.restart(),
-                    onLeave: () => { if (animationType === "trigger" && replay) hasOutAnimation ? animation.outTimeline?.restart() : animation.inTimeline?.reverse(); },
-                    onEnterBack: () => animationType === "trigger" && replay && animation.inTimeline?.restart(),
-                    onLeaveBack: () => { if (animationType === "trigger" && replay) hasOutAnimation ? animation.outTimeline?.restart() : animation.inTimeline?.reverse(); },
-                    onUpdate: (self) => { if (animationType === "scrub" && animation.inTimeline) gsap.to(animation.inTimeline, { progress: self.progress, duration: 1, ease: "expo.out", overwrite: true }); },
-                })
+                    trigger: triggerElement,
+                    start,
+                    end,
+                    markers: debugMarkers,
+                    scrub: animationType === "scrub" ? 1 : false,
+                    onEnter: () => animationType === "trigger" && animation.inTimeline?.play(),
+                    onLeaveBack: () => {
+                        if (animationType === "trigger" && replay) {
+                            hasOutAnimation ? animation.outTimeline?.reverse() : animation.inTimeline?.reverse();
+                        }
+                    },
+                    onLeave: () => {
+                         if (animationType === "trigger" && replay) {
+                            hasOutAnimation ? animation.outTimeline?.play() : animation.inTimeline?.reverse();
+                        }
+                    },
+                    onEnterBack: () => {
+                        if (animationType === "trigger" && replay) {
+                           hasOutAnimation ? animation.outTimeline?.reverse() : animation.inTimeline?.play();
+                        }
+                    },
+                    onUpdate: (self) => {
+                        if (animationType === "scrub" && animation.inTimeline) {
+                            gsap.to(animation.inTimeline, { progress: self.progress, duration: 0.5, ease: "power1.out", overwrite: true });
+                        }
+                    },
+                });
             }
         }
-        setupGsap()
 
-        if (animationType === 'manual' && animation.inTimeline) {
-            if (animateIn) animation.inTimeline.restart();
-            else animation.inTimeline.reverse();
-        }
-        if (animationType === 'manual' && animation.outTimeline && animateOut) {
-            animation.outTimeline.restart();
-        }
+        const ctx = gsap.context(() => {
+            setupGsap()
+            if (animationType === "manual") {
+                if (animateOut && hasOutAnimation && animation.outTimeline) {
+                    animation.outTimeline.restart()
+                } else if (hasInAnimation && animation.inTimeline) {
+                    if (animateIn) {
+                        animation.inTimeline.play()
+                    } else {
+                        animation.inTimeline.progress(0).pause()
+                    }
+                }
+            }
+        }, elementRef)
 
         return () => {
-            animation.scrollTrigger?.kill()
-            animation.inTimeline?.revert()
-            animation.outTimeline?.revert()
-            animation.splitText?.revert()
+            ctx.revert();
+            if (animation.scrollTrigger) animation.scrollTrigger.kill()
+            if (animation.inTimeline) animation.inTimeline.kill()
+            if (animation.outTimeline) animation.outTimeline.kill()
+            if (animation.splitText) animation.splitText.revert()
         }
-    }, [pluginsLoaded, text, preset, animationType, animateIn, animateOut, replay, section, viewport, JSON.stringify(props.lines), JSON.stringify(props.words), JSON.stringify(props.chars), JSON.stringify(props.linesOut), JSON.stringify(props.wordsOut), JSON.stringify(props.charsOut)])
 
-    const gradient = useGradient ? gradientProp : undefined;
-    const textStyles: React.CSSProperties = { ...font };
+    }, [
+        pluginsLoaded, text, preset, animationType, animateIn, animateOut,
+        replay, section, viewport, color, glitchColor, debugMarkers,
+        staticShockDuration, staticShockSpeed, staticShockDisplacement,
+        lettersOnlyReel,
+        JSON.stringify(props.font),
+        JSON.stringify(props.lines), JSON.stringify(props.words), JSON.stringify(props.chars),
+        JSON.stringify(props.linesOut), JSON.stringify(props.wordsOut), JSON.stringify(props.charsOut)
+    ])
 
-    // Only apply the base color or gradient if the animation preset itself isn't controlling the color.
-    if (!isColorAnimated) {
-        if (gradient) {
-            textStyles.color = 'transparent';
-            textStyles.backgroundImage = `linear-gradient(${gradient.angle ?? 90}deg, ${gradient.from}, ${gradient.to})`;
-            textStyles.WebkitBackgroundClip = 'text';
-            textStyles.backgroundClip = 'text';
-        } else {
-            textStyles.color = color;
-        }
-    }
 
-    const TextElement = React.createElement(
-        as,
-        {
-            className: className,
-            style: textStyles,
-            ref: splitRef
-        },
-        text
-    );
+    const Tag = as
+    const style: React.CSSProperties = {
+        opacity: 0,
+        ...font,
+        color: color,
+        position: 'relative',
+        filter: preset === 'staticShock' ? `url(#${filterId})` : undefined,
+    };
 
     return (
-        <div ref={elementRef} style={{ position: "relative", opacity: 0, width: "100%" }}>
-            {TextElement}
-        </div>
+        <Tag ref={elementRef} className={className} style={style}>
+            {preset === 'staticShock' && (
+                <svg style={{ position: 'absolute', width: 0, height: 0, overflow: 'hidden' }}>
+                    <filter id={filterId}>
+                        <feTurbulence type="fractalNoise" baseFrequency="0.01 0.01" numOctaves="1" result="turbulence" seed={Math.random()} />
+                        <feDisplacementMap in="SourceGraphic" in2="turbulence" scale="0" xChannelSelector="R" yChannelSelector="G" />
+                    </filter>
+                </svg>
+            )}
+            <span ref={splitRef} style={{ display: "inline-block", width: "100%" }}>
+                {text}
+            </span>
+        </Tag>
     )
 }
 
-Revelo.displayName = "Revelo"
-
-// ------------------------------------------------------------ //
-// FRAMER PROPERTY CONTROLS
-// ------------------------------------------------------------ //
-
 addPropertyControls(Revelo, {
-    text: {
-        type: ControlType.String,
-        title: "Text",
-        defaultValue: "Fluidity in Motion",
+    text: { type: ControlType.String, title: "Text", defaultValue: "Animated Text" },
+    as: {
+        type: ControlType.Enum,
+        title: "Tag",
+        options: ["h1", "h2", "h3", "h4", "h5", "h6", "p", "div", "span"],
+        defaultValue: "div",
     },
     preset: {
         type: ControlType.Enum,
         title: "Preset",
-        options: Object.keys(animationPresets).filter(p => p !== 'madeWithRevelo'),
+        options: Object.keys(animationPresets),
         defaultValue: "fluidityInMotion",
     },
     animationType: {
@@ -711,36 +861,58 @@ addPropertyControls(Revelo, {
         defaultValue: "center",
         hidden: (props) => props.animationType === "manual",
     },
-    as: {
-        type: ControlType.SegmentedEnum,
-        title: "Tag",
-        options: ["h1", "h2", "h3", "h4", "h5", "h6", "p", "div", "span"],
-        defaultValue: "div",
-    },
     font: {
         type: ControlType.Font,
         title: "Font",
-        controls: "extended"
+        controls: "extended",
     },
-    color: {
+    color: { type: ControlType.Color, title: "Color", defaultValue: "#EEEEEE" },
+    glitchColor: {
         type: ControlType.Color,
-        title: "Color",
-        defaultValue: "#EEEEEE",
-        hidden: (props) => props.useGradient,
+        title: "Glitch Color",
+        defaultValue: "#333333",
+        hidden: (props) => props.preset !== "staticShock",
     },
-    useGradient: {
+    lettersOnlyReel: {
         type: ControlType.Boolean,
-        title: "Gradient",
+        title: "Letters Only",
+        defaultValue: false,
+        hidden: (props) => props.preset !== "grandPrize",
+    },
+    debugMarkers: {
+        type: ControlType.Boolean,
+        title: "Debug",
         defaultValue: false,
     },
-    gradient: {
-        type: ControlType.Object,
-        title: " ",
-        controls: {
-            from: { type: ControlType.Color, title: "From", defaultValue: "#333333" },
-            to: { type: ControlType.Color, title: "To", defaultValue: "#FFFFFF" },
-            angle: { type: ControlType.Number, title: "Angle", defaultValue: 90, min: 0, max: 360, step: 1 },
-        },
-        hidden: (props) => !props.useGradient,
+    staticShockDuration: {
+        type: ControlType.Number,
+        title: "Shock Duration",
+        defaultValue: 1,
+        min: 0,
+        max: 10,
+        step: 0.1,
+        displayStepper: true,
+        unit: "s",
+        hidden: (props) => props.preset !== "staticShock",
     },
-})
+    staticShockSpeed: {
+        type: ControlType.Number,
+        title: "Shock Speed",
+        defaultValue: 5,
+        min: 1,
+        max: 50,
+        step: 1,
+        displayStepper: true,
+        hidden: (props) => props.preset !== "staticShock",
+    },
+    staticShockDisplacement: {
+        type: ControlType.Number,
+        title: "Displacement",
+        defaultValue: 15,
+        min: 0,
+        max: 100,
+        step: 1,
+        displayStepper: true,
+        hidden: (props) => props.preset !== "staticShock",
+    },
+});

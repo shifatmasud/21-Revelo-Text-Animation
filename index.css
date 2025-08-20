@@ -1,0 +1,112 @@
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+
+body {
+  font-family: 'Inter', sans-serif;
+  background-color: #050505;
+  color: #eee;
+  overscroll-behavior-y: none;
+}
+
+#root {
+  width: 100%;
+}
+
+.section {
+  min-height: 140vh;
+  width: 100%;
+  display: grid;
+  place-items: center;
+  padding: 8rem 2rem;
+  position: relative;
+}
+
+.section--hero {
+    min-height: 100vh;
+    padding: 4rem 2rem;
+}
+
+.section--footer {
+    min-height: 60vh;
+}
+
+.animation-container {
+    width: 90%;
+    max-width: 1400px;
+    perspective: 1000px;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 1rem;
+}
+
+.animation-container--paragraph {
+    max-width: 800px;
+}
+
+.hero-heading {
+    font-family: 'Syne', sans-serif;
+    font-size: clamp(3rem, 12vw, 10rem);
+    text-align: center;
+    font-weight: 800;
+    letter-spacing: -0.05em;
+    line-height: 1;
+    text-transform: uppercase;
+}
+
+.paragraph {
+    font-size: clamp(1.2rem, 3vw, 1.8rem);
+    line-height: 1.5;
+    font-weight: 400;
+}
+
+.feature-heading {
+    font-family: 'Syne', sans-serif;
+    font-size: clamp(3rem, 10vw, 8rem);
+    text-align: center;
+    font-weight: 800;
+    letter-spacing: -0.05em;
+    line-height: 1.1;
+    color: #eee;
+    text-transform: uppercase;
+}
+
+.subtitle {
+    font-size: clamp(1rem, 1.5vw, 1.2rem);
+    color: #888;
+    text-align: center;
+    max-width: 600px;
+    margin-top: -1rem;
+    font-weight: 400;
+}
+
+.footer-heading {
+    font-size: clamp(2rem, 5vw, 3rem);
+    font-weight: 800;
+    color: #555;
+    text-align: center;
+    font-family: 'Syne', sans-serif;
+}
+
+
+/* Styles for GSAP SplitText elements */
+.line {
+    overflow: hidden;
+    display: block; 
+}
+.word {
+    display: inline-block;
+    white-space: nowrap;
+    will-change: transform, opacity, color;
+    transform: translate3d(0,0,0);
+}
+.char {
+    display: inline-block;
+    will-change: transform, opacity, filter, transform;
+    transform: translate3d(0,0,0);
+}

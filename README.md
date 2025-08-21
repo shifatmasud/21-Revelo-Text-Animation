@@ -1,20 +1,46 @@
-<div align="center">
-<img width="1200" height="475" alt="GHBanner" src="https://github.com/user-attachments/assets/0aa67016-6eaf-458a-adb2-6e31a0763ed6" />
-</div>
+# Revelo Text Animation Component
 
-# Run and deploy your AI Studio app
+A versatile React component for creating stunning, scroll-based text animations with GSAP.
 
-This contains everything you need to run your app locally.
+**Live Demo:** [**https://top-screens-057770.framer.app/page-4**](https://top-screens-057770.framer.app/page-4)
 
-View your app in AI Studio: https://ai.studio/apps/drive/1d9pdqFzOhwhS4n1rdgLYE6x79li1JDpB
+---
 
-## Run Locally
+### TL;DR (Too Long; Didn't Read)
 
-**Prerequisites:**  Node.js
+This is a powerful React component that lets you easily add complex, professional-grade text animations to your website with minimal code. You pick a preset effect, and it animates your text as the user scrolls.
 
+---
 
-1. Install dependencies:
-   `npm install`
-2. Set the `GEMINI_API_KEY` in [.env.local](.env.local) to your Gemini API key
-3. Run the app:
-   `npm run dev`
+### ELI5 (Explain Like I'm 5)
+
+Imagine you have some words on a webpage. This tool is like a magic box that makes the words do cool tricks when you scroll! The letters can fly in from the sides, bounce like rubber balls, unfold like a piece of paper, or even glitch like a video game. You just give the magic box your words and tell it which trick to do.
+
+---
+
+### Context Map
+
+This project is a self-contained text animation system designed as a React component, making it easy to drop into any React-based website or Framer project.
+
+-   **Core Purpose:** To animate text elements (characters, words, or lines) as they enter the viewport.
+-   **Key Technologies:**
+    -   **React:** The component is built using React for easy integration into modern web apps.
+    -   **GSAP (GreenSock Animation Platform):** The industry-standard JavaScript animation library powers all the effects.
+        -   `SplitText`: A GSAP plugin used to break down text into individual characters, words, and lines, allowing each to be animated independently.
+        -   `ScrollTrigger`: A GSAP plugin that triggers animations based on the user's scroll position.
+-   **Main Features:**
+    -   **21+ Animation Presets:** A wide variety of pre-configured effects like `fluidityInMotion`, `grandPrize`, `systemCorruption`, and `warpSpeedAhead` are available out-of-the-box.
+    -   **Customizable:** While presets are powerful, you can override any animation property (like duration, easing, and transformations) for full creative control.
+    -   **Multiple Animation Types:**
+        -   `trigger`: The animation plays once when the element scrolls into view.
+        -   `scrub`: The animation's progress is directly linked to the scroll bar's position.
+        -   `manual`: The animation is controlled programmatically via props.
+    -   **Framer Integration:** Includes property controls for easy visual editing within the Framer design tool.
+
+### How It Works
+
+1.  You add the `<Revelo>` component to your page.
+2.  You pass it some text via the `text` prop.
+3.  You choose an effect using the `preset` prop (e.g., `preset="rideTheWave"`).
+4.  GSAP's `SplitText` plugin breaks your text into tiny pieces (characters, words, lines).
+5.  GSAP's `ScrollTrigger` watches the page scroll. When the component is visible, it tells GSAP to play the animation you chose, moving all the tiny text pieces into place according to the preset's rules.

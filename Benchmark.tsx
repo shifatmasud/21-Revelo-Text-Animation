@@ -486,11 +486,10 @@ export default function Revelo(props: Props) {
     const filterId = `revelo-filter-${useId().replace(/:/g, "")}`
 
     useEffect(() => {
-        // @ts-ignore
         if (
             window.gsap &&
-            window.gsap.plugins.CustomEase &&
-            window.gsap.plugins.RoughEase
+            (window.gsap.plugins as any).CustomEase &&
+            (window.gsap.plugins as any).RoughEase
         ) {
             setPluginsLoaded(true)
             return

@@ -49,9 +49,9 @@ interface Props {
     className?: string
     preset?: keyof typeof animationPresets
     animationType?: "scrub" | "trigger" | "manual"
-    animateIn?: boolean
-    animateOut?: boolean
+    animate?: boolean
     replay?: boolean
+    duration?: number
     section?: React.RefObject<HTMLElement>
     viewport?: "top" | "center" | "bottom"
     lines?: Partial<AnimationProperties>
@@ -87,6 +87,14 @@ type AnimationPresetProperties = {
     linesOut?: Partial<AnimationProperties>
     wordsOut?: Partial<AnimationProperties>
     charsOut?: Partial<AnimationProperties>
+}
+
+type AnimationState = {
+    inTimeline: gsap.core.Timeline | null
+    outTimeline: gsap.core.Timeline | null
+    splitText: SplitText | null
+    hasOutAnimation: boolean
+    ctx: gsap.Context | null
 }
 
 // ------------------------------------------------------------ //
@@ -238,9 +246,9 @@ const animationPresets: { [key: string]: AnimationPresetProperties } = {
             x: { to: () => gsap.utils.random(-150, 150) },
             scale: { to: 0.1 },
             rotate: { to: () => gsap.utils.random(-90, 90) },
-            duration: 1.5,
+            duration: 1,
             stagger: { amount: 1, from: "random" },
-            ease: "power4.in",
+            ease: "power3.out",
         }
     },
     floatingBubbles: {
@@ -417,9 +425,9 @@ export default function Revelo(props: Props) {
         className,
         preset,
         animationType = "trigger",
-        animateIn,
-        animateOut,
+        animate = false,
         replay = true,
+        duration,
         section,
         viewport = "center",
         font = {},
@@ -436,6 +444,15 @@ export default function Revelo(props: Props) {
     const splitRef = useRef<HTMLDivElement>(null);
     const [pluginsLoaded, setPluginsLoaded] = useState(false);
     const filterId = `revelo-filter-${useId().replace(/:/g, "")}`;
+    const scrollTriggerRef = useRef<ScrollTrigger | null>(null);
+
+     const [animation, setAnimation] = useState<AnimationState>({
+        inTimeline: null,
+        outTimeline: null,
+        splitText: null,
+        hasOutAnimation: false,
+        ctx: null,
+    });
     
     useEffect(() => {
         // @ts-ignore
@@ -500,6 +517,7 @@ export default function Revelo(props: Props) {
             });
     }, []);
 
+    // Animation Setup Effect
     useEffect(() => {
         if (!pluginsLoaded) return;
 
@@ -518,33 +536,39 @@ export default function Revelo(props: Props) {
             charsOut: { ...presetProps.charsOut, ...props.charsOut },
         };
 
+        if (duration !== undefined) {
+            const keys: (keyof AnimationPresetProperties)[] = ['lines', 'words', 'chars', 'linesOut', 'wordsOut', 'charsOut'];
+            for (const key of keys) {
+                if (animationProps[key] && Object.keys(animationProps[key]).length > 0) {
+                    animationProps[key].duration = duration;
+                }
+            }
+        }
+
         for (const key of ['lines', 'words', 'chars', 'linesOut', 'wordsOut', 'charsOut']) {
             const propSet = animationProps[key as keyof typeof animationProps];
             if (propSet && propSet.color) {
                 propSet.color = { ...propSet.color, to: color };
             }
         }
-
-        const animation = {
-            inTimeline: null as gsap.core.Timeline | null,
-            outTimeline: null as gsap.core.Timeline | null,
-            scrollTrigger: null as ScrollTrigger | null,
-            splitText: null as SplitText | null,
-        }
         
         const hasInAnimation = Object.keys(animationProps.lines).length > 0 || Object.keys(animationProps.words).length > 0 || Object.keys(animationProps.chars).length > 0;
         const hasOutAnimation = Object.keys(animationProps.linesOut).length > 0 || Object.keys(animationProps.wordsOut).length > 0 || Object.keys(animationProps.charsOut).length > 0;
 
-        const setupGsap = () => {
+        let inTimeline: gsap.core.Timeline | null = null
+        let outTimeline: gsap.core.Timeline | null = null
+        let splitText: SplitText | null = null
+        
+        const ctx = gsap.context(() => {
             if (!splitRef.current || !hasInAnimation) {
                 if (elementRef.current) elementRef.current.style.opacity = "1"
                 return
             }
 
-            animation.inTimeline = gsap.timeline({ paused: true })
-            animation.outTimeline = gsap.timeline({ paused: true })
+            inTimeline = gsap.timeline({ paused: true })
+            outTimeline = gsap.timeline({ paused: true })
             
-            animation.splitText = new SplitText(splitRef.current, {
+            splitText = new SplitText(splitRef.current, {
                 type: `${Object.keys(animationProps.lines).length > 0 ? "lines," : ""}${Object.keys(animationProps.words).length > 0 ? "words," : ""}${Object.keys(animationProps.chars).length > 0 ? "chars" : ""}`,
                 mask: animationProps.lines?.mask ? "lines" : animationProps.words?.mask ? "words" : animationProps.chars?.mask ? "chars" : undefined,
                 linesClass: "line",
@@ -555,16 +579,16 @@ export default function Revelo(props: Props) {
             if (elementRef.current) elementRef.current.style.opacity = "1"
 
             const targets = {
-                lines: Object.keys(animationProps.lines).length > 0 && animation.splitText.lines,
-                words: Object.keys(animationProps.words).length > 0 && animation.splitText.words,
-                chars: Object.keys(animationProps.chars).length > 0 && animation.splitText.chars,
+                lines: Object.keys(animationProps.lines).length > 0 && splitText.lines,
+                words: Object.keys(animationProps.words).length > 0 && splitText.words,
+                chars: Object.keys(animationProps.chars).length > 0 && splitText.chars,
             }
 
             // --- IN ANIMATIONS ---
             ;(['lines', 'words', 'chars'] as const).forEach(key => {
                 const target = targets[key];
                 const animProps = animationProps[key];
-                if (!target || target.length === 0 || !animProps) return;
+                if (!target || target.length === 0 || !animProps || Object.keys(animProps).length === 0) return;
 
                 if (preset === 'staticShock' && key === 'chars') {
                     const duration = animProps.duration ?? 0.4;
@@ -574,12 +598,12 @@ export default function Revelo(props: Props) {
                     const feDisplacementMap = document.querySelector(`#${filterId} feDisplacementMap`);
                     const feTurbulence = document.querySelector(`#${filterId} feTurbulence`);
                     
-                    animation.inTimeline.fromTo(target, 
+                    inTimeline.fromTo(target, 
                         { ...fromValues }, 
                         { ...toValues, duration, ease, stagger: animProps.stagger }
                     );
                     if(feDisplacementMap) {
-                        animation.inTimeline.fromTo(feDisplacementMap,
+                        inTimeline.fromTo(feDisplacementMap,
                             { attr: { scale: staticShockDisplacement } },
                             { attr: { scale: 0 }, duration, ease },
                             "<"
@@ -616,7 +640,7 @@ export default function Revelo(props: Props) {
                                 ease: "steps(1)"
                             }, "<");
                         }
-                        animation.inTimeline.add(loopTl);
+                        inTimeline.add(loopTl);
                     }
 
                     const settleTl = gsap.timeline();
@@ -629,7 +653,7 @@ export default function Revelo(props: Props) {
                             duration: 0.5, attr: { scale: 0 }, ease: "power3.out",
                         }, "<");
                     }
-                    animation.inTimeline.add(settleTl);
+                    inTimeline.add(settleTl);
 
                 } else if (key === 'chars' && animProps.reel) {
                     const charElements = target as HTMLElement[];
@@ -661,7 +685,7 @@ export default function Revelo(props: Props) {
                         charEl.style.overflow = 'hidden';
                         charEl.style.display = 'inline-block';
 
-                        animation.inTimeline?.fromTo(
+                        inTimeline?.fromTo(
                             reelContainer,
                             { y: 0, ...getValues(animProps, "from") },
                             {
@@ -676,22 +700,33 @@ export default function Revelo(props: Props) {
                     });
 
                 } else {
+                    const duration = animProps.duration ?? 1;
+                    const ease = animProps.ease ?? "expo.out";
+                    const delay = animProps.delay ?? 0;
                     const stagger = animProps.stagger ?? 0;
-                    let staggerOptions: gsap.StaggerVars = typeof stagger === "number"
+                    let staggerOptions: gsap.StaggerVars =
+                        typeof stagger === "number"
                             ? { amount: stagger, from: animProps.origin ?? "start" }
                             : stagger;
-                            
-                    animation.inTimeline?.fromTo(target,
-                        getValues(animProps, "from"),
-                        {
-                            ...getValues(animProps, "to"),
-                            duration: animProps.duration,
-                            stagger: staggerOptions,
-                            ease: animProps.ease,
-                            transformOrigin: animProps.transformOrigin,
-                        },
-                        animProps.delay ?? 0
-                    );
+                    
+                    const fromVars: any = {
+                        ...getValues(animProps, "from"),
+                        force3D: true,
+                    };
+
+                    const toVars: any = {
+                        ...getValues(animProps, "to"),
+                        duration,
+                        ease,
+                        delay,
+                        stagger: staggerOptions,
+                    };
+
+                    if (animProps.transformOrigin) {
+                        fromVars.transformOrigin = animProps.transformOrigin;
+                        toVars.transformOrigin = animProps.transformOrigin;
+                    }
+                    inTimeline?.fromTo(target, fromVars, toVars, 0);
                 }
             });
 
@@ -701,93 +736,123 @@ export default function Revelo(props: Props) {
                     const target = targets[key];
                     const animProps = animationProps[`${key}Out`];
                      if (target && target.length > 0 && animProps && Object.keys(animProps).length > 0) {
-                         const stagger = animProps.stagger ?? 0;
-                         let staggerOptions: gsap.StaggerVars = typeof stagger === "number"
-                                 ? { amount: stagger, from: animProps.origin ?? "start" }
-                                 : stagger;
-                         animation.outTimeline?.to(target, 
-                            {
-                                ...getValues(animProps, "to"),
-                                duration: animProps.duration,
-                                stagger: staggerOptions,
-                                ease: animProps.ease,
-                                transformOrigin: animProps.transformOrigin,
-                            },
-                            animProps.delay ?? 0
-                        );
+                        const duration = animProps.duration ?? 1;
+                        const ease = animProps.ease ?? "expo.out";
+                        const delay = animProps.delay ?? 0;
+                        const stagger = animProps.stagger ?? 0;
+                        let staggerOptions: gsap.StaggerVars =
+                            typeof stagger === "number"
+                                ? { amount: stagger, from: animProps.origin ?? "start" }
+                                : stagger;
+                        
+                        const toVars: any = {
+                           ...getValues(animProps, "to"),
+                           duration,
+                           ease,
+                           delay,
+                           stagger: staggerOptions,
+                        };
+
+                        if (animProps.transformOrigin) {
+                            toVars.transformOrigin = animProps.transformOrigin;
+                        }
+
+                        outTimeline?.to(target, toVars, 0);
                      }
                 })
             }
             
-            if (animationType !== "manual") {
-                const triggerElement = section?.current || elementRef.current;
-                const vp = viewport ?? "center";
-                const start = animationType === 'scrub' ? "top bottom" : `top ${vp === 'center' ? 'center' : vp === 'top' ? 'bottom' : 'top'}`;
-                const end = animationType === 'scrub' ? "bottom top" : `bottom ${vp === 'center' ? 'center' : vp === 'top' ? 'bottom' : 'top'}`;
-
-                animation.scrollTrigger = ScrollTrigger.create({
-                    trigger: triggerElement,
-                    start,
-                    end,
-                    markers: debugMarkers,
-                    scrub: animationType === "scrub" ? 1 : false,
-                    onEnter: () => animationType === "trigger" && animation.inTimeline?.play(),
-                    onLeaveBack: () => {
-                        if (animationType === "trigger" && replay) {
-                            hasOutAnimation ? animation.outTimeline?.reverse() : animation.inTimeline?.reverse();
-                        }
-                    },
-                    onLeave: () => {
-                         if (animationType === "trigger" && replay) {
-                            hasOutAnimation ? animation.outTimeline?.play() : animation.inTimeline?.reverse();
-                        }
-                    },
-                    onEnterBack: () => {
-                        if (animationType === "trigger" && replay) {
-                           hasOutAnimation ? animation.outTimeline?.reverse() : animation.inTimeline?.play();
-                        }
-                    },
-                    onUpdate: (self) => {
-                        if (animationType === "scrub" && animation.inTimeline) {
-                            gsap.to(animation.inTimeline, { progress: self.progress, duration: 0.5, ease: "power1.out", overwrite: true });
-                        }
-                    },
-                });
-            }
-        }
-
-        const ctx = gsap.context(() => {
-            setupGsap()
-            if (animationType === "manual") {
-                if (animateOut && hasOutAnimation && animation.outTimeline) {
-                    animation.outTimeline.restart()
-                } else if (hasInAnimation && animation.inTimeline) {
-                    if (animateIn) {
-                        animation.inTimeline.play()
-                    } else {
-                        animation.inTimeline.progress(0).pause()
-                    }
-                }
-            }
         }, elementRef)
+
+        setAnimation({ inTimeline, outTimeline, splitText, hasOutAnimation, ctx });
 
         return () => {
             ctx.revert();
-            if (animation.scrollTrigger) animation.scrollTrigger.kill()
-            if (animation.inTimeline) animation.inTimeline.kill()
-            if (animation.outTimeline) animation.outTimeline.kill()
-            if (animation.splitText) animation.splitText.revert()
         }
 
     }, [
-        pluginsLoaded, text, preset, animationType, animateIn, animateOut,
-        replay, section, viewport, color, glitchColor, debugMarkers,
-        staticShockDuration, staticShockSpeed, staticShockDisplacement,
-        lettersOnlyReel,
-        JSON.stringify(props.font),
+        pluginsLoaded, text, preset, duration,
         JSON.stringify(props.lines), JSON.stringify(props.words), JSON.stringify(props.chars),
-        JSON.stringify(props.linesOut), JSON.stringify(props.wordsOut), JSON.stringify(props.charsOut)
-    ])
+        JSON.stringify(props.linesOut), JSON.stringify(props.wordsOut), JSON.stringify(props.charsOut),
+        JSON.stringify(font), color, glitchColor, lettersOnlyReel, staticShockDuration,
+        staticShockSpeed, staticShockDisplacement
+    ]);
+
+    // Animation Control Effect
+    useEffect(() => {
+        const { inTimeline, outTimeline, hasOutAnimation } = animation;
+
+        // Kill any existing ScrollTrigger before creating a new one
+        if (scrollTriggerRef.current) {
+            scrollTriggerRef.current.kill();
+            scrollTriggerRef.current = null;
+        }
+
+        if (animationType === "manual") {
+            if (animate) {
+                inTimeline?.play();
+            } else {
+                if (hasOutAnimation && outTimeline) {
+                    inTimeline?.progress(1);
+                    outTimeline.restart();
+                } else {
+                    inTimeline?.reverse();
+                }
+            }
+        } else {
+            const triggerElement = section?.current || elementRef.current;
+            if (!inTimeline || !triggerElement) return;
+
+            let start, end;
+            const vp = viewport ?? "center";
+
+            if (animationType === "scrub") {
+                start = vp === "top" ? "top center" : vp === "bottom" ? "top bottom" : "top 80%";
+                end = vp === "top" ? "bottom top" : vp === "bottom" ? "bottom center" : "bottom 20%";
+            } else {
+                start = `top ${vp}`;
+                end = `bottom ${vp}`;
+            }
+            
+            scrollTriggerRef.current = ScrollTrigger.create({
+                trigger: triggerElement,
+                start,
+                end,
+                markers: debugMarkers,
+                scrub: animationType === "scrub" ? 1 : false,
+                once: !replay && animationType === "trigger",
+                onEnter: () => animationType === "trigger" && inTimeline?.restart(),
+                onLeave: () => {
+                    if (animationType === "trigger" && replay) {
+                        hasOutAnimation ? outTimeline?.restart() : inTimeline?.reverse();
+                    }
+                },
+                onEnterBack: () => animationType === "trigger" && replay && inTimeline?.restart(),
+                onLeaveBack: () => {
+                    if (animationType === "trigger" && replay) {
+                        inTimeline?.reverse();
+                    }
+                },
+                onUpdate: (self) => {
+                    if (animationType === "scrub" && inTimeline) {
+                        gsap.to(inTimeline, { 
+                            progress: self.progress, 
+                            duration: 1, 
+                            ease: "expo.out", 
+                            overwrite: true 
+                        });
+                    }
+                },
+            });
+        }
+
+        return () => {
+            if (scrollTriggerRef.current) {
+                scrollTriggerRef.current.kill();
+                scrollTriggerRef.current = null;
+            }
+        }
+    }, [animation, animationType, animate, replay, section, viewport, debugMarkers]);
 
 
     const Tag = as
@@ -836,15 +901,9 @@ addPropertyControls(Revelo, {
         options: ["trigger", "scrub", "manual"],
         defaultValue: "trigger",
     },
-    animateIn: {
+    animate: {
         type: ControlType.Boolean,
-        title: "Animate In",
-        defaultValue: false,
-        hidden: (props) => props.animationType !== "manual",
-    },
-    animateOut: {
-        type: ControlType.Boolean,
-        title: "Animate Out",
+        title: "Animate",
         defaultValue: false,
         hidden: (props) => props.animationType !== "manual",
     },
@@ -853,6 +912,15 @@ addPropertyControls(Revelo, {
         title: "Replay",
         defaultValue: true,
         hidden: (props) => props.animationType === "manual",
+    },
+    duration: {
+        type: ControlType.Number,
+        title: "Duration",
+        min: 0,
+        max: 10,
+        step: 0.1,
+        displayStepper: true,
+        unit: "s",
     },
     viewport: {
         type: ControlType.SegmentedEnum,
